@@ -16,7 +16,7 @@ jobs:
         run: |
           cat > QUERY <<EOF
           {
-            repository(owner: "leleliu008", name: "test") {
+            repository(owner: "leleliu008", name: "uctags-build-tools") {
                 latestRelease {
                   name
                 }
