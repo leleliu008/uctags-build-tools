@@ -283,9 +283,9 @@ jobs:
           ## how to install
 
           \`\`\`bash
-          sudo install -d -g \`id -g\` -o \`id -u\` /opt/uctags-build-tools-\${{ needs.check.outputs.release-version }}-linux-glibc-x86_64
-          tar xPf uctags-build-tools-\${{ needs.check.outputs.release-version }}-linux-glibc-x86_64.tar.xz
-          export PATH="/opt/uctags-build-tools-\${{ needs.check.outputs.release-version }}-linux-glibc-x86_64/bin:\$PATH"
+          sudo install -d -g \`id -g\` -o \`id -u\` /opt/uctags-build-tools-${{ needs.check.outputs.release-version }}-linux-glibc-x86_64
+          tar xPf uctags-build-tools-${{ needs.check.outputs.release-version }}-linux-glibc-x86_64.tar.xz
+          export PATH="/opt/uctags-build-tools-${{ needs.check.outputs.release-version }}-linux-glibc-x86_64/bin:\$PATH"
           \`\`\`
 
           ## included softwares
