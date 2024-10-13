@@ -741,7 +741,6 @@ install_the_given_package() {
     #########################################################################################
 
     case $1 in
-        libtool)    PACKAGE_TYPE=2 ;;
         lib*)       PACKAGE_TYPE=1 ;;
         *)          PACKAGE_TYPE=2 ;;
     esac
@@ -1010,7 +1009,7 @@ package_info_diffutils() {
 
 help() {
     printf '%b\n' "\
-${COLOR_GREEN}A package builder to build non-relocatable packages such as automake, autoconf, libtool, ruby, perl, python3, etc.${COLOR_OFF}
+${COLOR_GREEN}A package builder to build non-relocatable packages such as automake, autoconf, perl, python3, etc.${COLOR_OFF}
 
 ${COLOR_GREEN}xbuilder --help${COLOR_OFF}
 ${COLOR_GREEN}xbuilder -h${COLOR_OFF}
@@ -1099,7 +1098,7 @@ case $1 in
         printf '%s\n' "$XBUILDER_VERSION"
         ;;
     ls-available)
-        PACKAGE_NAMES='libz libbz2 liblzma libsqlite3 libopenssl libexpat libgdbm libffi perl python3 libtool autoconf automake pkgconf gmake gm4'
+        PACKAGE_NAMES='libz libbz2 liblzma libsqlite3 libopenssl libexpat libgdbm libffi perl python3 autoconf automake pkgconf gmake gm4'
 
         if [ "$2" = -v ] ; then
             for PACKAGE_NAME in $PACKAGE_NAMES

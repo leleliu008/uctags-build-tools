@@ -102,7 +102,7 @@ PREFIX="/opt/$XXXXXX"
 
 run $sudo install -d -g `id -g -n` -o `id -u -n` "$PREFIX"
 
-run ./xbuilder install automake libtool pkgconf gmake findutils diffutils $PKG --prefix="$PREFIX"
+run ./xbuilder install automake pkgconf gmake findutils diffutils $PKG --prefix="$PREFIX"
 
 case $2 in
     linux-glibc-*)
