@@ -293,13 +293,7 @@ inspect_install_arguments() {
 
     unset ENABLE_LTO
 
-    unset ENABLE_STRIP
-
-    unset ENABLE_CCACHE
-
     unset REQUEST_TO_KEEP_SESSION_DIR
-
-    unset REQUEST_TO_UPGRADE_IF_POSSIBLE
 
     unset REQUEST_TO_EXPORT_COMPILE_COMMANDS_JSON
 
@@ -311,38 +305,34 @@ inspect_install_arguments() {
 
     unset DUMP_ENV
     unset DUMP_HTTP
-    unset DUMP_UPPM
 
     unset VERBOSE_GMAKE
     unset VERBOSE_CMAKE
 
     unset DEBUG_CC
     unset DEBUG_LD
-    unset DEBUG_GO
-    unset DEBUG_CARGO
+
     unset DEBUG_GMAKE
     unset DEBUG_CMAKE
-    unset DEBUG_XMAKE
     unset DEBUG_PKG_CONFIG
 
     while [ -n "$1" ]
     do
         case $1 in
+            -x) set -x ;;
             -q) LOG_LEVEL=0 ;;
             -v) LOG_LEVEL=2
 
                 DUMP_ENV=1
                 DUMP_HTTP=1
-                DUMP_UPPM=1
 
                 VERBOSE_GMAKE=1
                 VERBOSE_CMAKE=1
                 ;;
-            -x) LOG_LEVEL=3
+            -vv)LOG_LEVEL=3
 
                 DUMP_ENV=1
                 DUMP_HTTP=1
-                DUMP_UPPM=1
 
                 VERBOSE_GMAKE=1
                 VERBOSE_CMAKE=1
@@ -359,22 +349,16 @@ inspect_install_arguments() {
             -v-http)
                 DUMP_HTTP=1
                 ;;
-            -v-uppm)
-                DUMP_UPPM=1
-                ;;
             -v-gmake)
                 VERBOSE_GMAKE=1
                 ;;
             -v-cmake)
                 VERBOSE_CMAKE=1
                 ;;
-            -x-sh)
-                set -x
-                ;;
-            -x-cc)
+            -v-cc)
                 DEBUG_CC=1
                 ;;
-            -x-ld)
+            -v-ld)
                 DEBUG_LD=1
                 ;;
             -x-gmake)
@@ -385,23 +369,6 @@ inspect_install_arguments() {
                 ;;
             -x-pkg-config)
                 DEBUG_PKG_CONFIG=1
-                ;;
-
-            --disable-ccache)
-                ENABLE_CCACHE=0
-                ;;
-            --enable-lto)
-                ENABLE_LTO=1
-                ;;
-            --enable-strip)
-                ENABLE_STRIP=all
-                ;;
-            --enable-strip=*)
-                ENABLE_STRIP="${1#*=}"
-                case $ENABLE_STRIP in
-                    no|all|debug|unneeded) ;;
-                    *)  abort 1 "--strip=<VALUE>, VALUE must be one of no, all, debug, unneeded"
-                esac
                 ;;
             --profile=*)
                 PROFILE="${1#*=}"
@@ -435,7 +402,6 @@ inspect_install_arguments() {
                 BUILD_NJOBS="$1"
                 ;;
             -K) REQUEST_TO_KEEP_SESSION_DIR=1 ;;
-            -U) REQUEST_TO_UPGRADE_IF_POSSIBLE=1 ;;
             -E) REQUEST_TO_EXPORT_COMPILE_COMMANDS_JSON=1 ;;
 
             -*) abort 1 "unrecognized option: $1"
@@ -447,17 +413,12 @@ inspect_install_arguments() {
 
     #########################################################################################
 
-    if [ -z "$SESSION_DIR" ] ; then
-        SESSION_DIR="$HOME/.xbuilder/run/$$"
-    fi
+    : ${PROFILE:=release}
+    : ${ENABLE_LTO:=1}
 
-    if [ -z "$DOWNLOAD_DIR" ] ; then
-        DOWNLOAD_DIR="$HOME/.xbuilder/downloads"
-    fi
-
-    if [ -z "$PACKAGE_INSTALL_ROOT" ] ; then
-        PACKAGE_INSTALL_ROOT="$HOME/.xbuilder/installed"
-    fi
+    : ${SESSION_DIR:="$HOME/.xbuilder/run/$$"}
+    : ${DOWNLOAD_DIR:="$HOME/.xbuilder/downloads"}
+    : ${PACKAGE_INSTALL_DIR:="$HOME/.xbuilder/installed"}
 
     #########################################################################################
 
@@ -489,20 +450,15 @@ inspect_install_arguments() {
 
     #########################################################################################
 
-    if [ -z "$PROFILE" ] ; then
-        PROFILE=release
+    if [ -z "$GMAKE" ] ; then
+        GMAKE="$(command -v gmake || command -v make)" || abort 1 "command not found: gmake"
     fi
 
     #########################################################################################
 
-    if [ -z "$ENABLE_STRIP" ] ; then
-        case $PROFILE in
-            debug)   ENABLE_STRIP=no  ;;
-            release) ENABLE_STRIP=all ;;
-        esac
-    fi
-
-    #########################################################################################
+    unset CC_ARGS
+    unset PP_ARGS
+    unset LD_ARGS
 
     if [ "$NATIVE_OS_KIND" = 'darwin' ] ; then
         [ -z "$CC"      ] &&      CC="$(xcrun --sdk macosx --find clang)"
@@ -515,10 +471,9 @@ inspect_install_arguments() {
 
         NATIVE_OS_VERS="$(sw_vers -productVersion)"
 
-          CFLAGS="-isysroot $SYSROOT -mmacosx-version-min=$NATIVE_OS_VERS -arch $NATIVE_OS_ARCH -Qunused-arguments"
-        CXXFLAGS="-isysroot $SYSROOT -mmacosx-version-min=$NATIVE_OS_VERS -arch $NATIVE_OS_ARCH -Qunused-arguments"
-        CPPFLAGS="-isysroot $SYSROOT -Qunused-arguments"
-         LDFLAGS="-isysroot $SYSROOT -mmacosx-version-min=$NATIVE_OS_VERS -arch $NATIVE_OS_ARCH"
+        CC_ARGS="-isysroot $SYSROOT -mmacosx-version-min=$NATIVE_OS_VERS -arch $NATIVE_OS_ARCH -Qunused-arguments"
+        PP_ARGS="-isysroot $SYSROOT -Qunused-arguments"
+        LD_ARGS="-isysroot $SYSROOT -mmacosx-version-min=$NATIVE_OS_VERS -arch $NATIVE_OS_ARCH"
     else
         [ -z "$CC" ] && {
              CC="$(command -v cc  || command -v clang   || command -v gcc)" || abort 1 "C Compiler not found."
@@ -544,11 +499,10 @@ inspect_install_arguments() {
             RANLIB="$(command -v ranlib)" || abort 1 "command not found: ranlib"
         }
 
-          CFLAGS="-fPIC -fno-common"
-        CXXFLAGS="-fPIC -fno-common"
-        CPPFLAGS=
+        CC_ARGS="-fPIC -fno-common"
+
         # https://gcc.gnu.org/onlinedocs/gcc/Link-Options.html
-         LDFLAGS="-Wl,--as-needed -Wl,-z,muldefs -Wl,--allow-multiple-definition"
+        LD_ARGS="-Wl,--as-needed -Wl,-z,muldefs -Wl,--allow-multiple-definition"
     fi
 
     #########################################################################################
@@ -558,29 +512,50 @@ inspect_install_arguments() {
     #########################################################################################
 
     if [ "$DEBUG_CC" = 1 ] ; then
-          CFLAGS="$CFLAGS -v"
-        CXXFLAGS="$CXXFLAGS -v"
+        CC_ARGS="$CC_ARGS -v"
     fi
 
     if [ "$DEBUG_LD" = 1 ] ; then
-         LDFLAGS="$LDFLAGS -Wl,-v"
+         LD_ARGS="$LD_ARGS -Wl,-v"
     fi
 
-    if [ "$PROFILE" = release ] ; then
-          CFLAGS="$CFLAGS -Os"
-        CXXFLAGS="$CXXFLAGS -Os"
-        
-        if [ "$NATIVE_OS_KIND" = 'darwin' ] ; then
-            LDFLAGS="$LDFLAGS -Wl,-S"
-        else
-            LDFLAGS="$LDFLAGS -Wl,-s"
-        fi
-    fi
+    case $PROFILE in
+        debug)
+            CC_ARGS="$CC_ARGS -O0 -g"
+            ;;
+        release)
+            CC_ARGS="$CC_ARGS -Os"
+
+            if [ "$ENABLE_LTO" = 1 ] ; then
+                LD_ARGS="$LD_ARGS -flto"
+            fi
+
+            if [ "$NATIVE_OS_KIND" = darwin ] ; then
+                LD_ARGS="$LD_ARGS -Wl,-S"
+            else
+                LD_ARGS="$LD_ARGS -Wl,-s"
+            fi
+    esac
 
     case $NATIVE_OS_KIND in
-        netbsd)  LDFLAGS="$LDFLAGS -lpthread" ;;
-        openbsd) LDFLAGS="$LDFLAGS -lpthread" ;;
+        netbsd)  LD_ARGS="$LD_ARGS -lpthread" ;;
+        openbsd) LD_ARGS="$LD_ARGS -lpthread" ;;
     esac
+
+    #########################################################################################
+
+    PATH="$PACKAGE_INSTALL_DIR/bin:$PATH"
+
+    PP_ARGS="$PP_ARGS -I$PACKAGE_INSTALL_DIR/include"
+
+    LD_ARGS="$LD_ARGS -L$PACKAGE_INSTALL_DIR/lib -Wl,-rpath,$PACKAGE_INSTALL_DIR/lib"
+
+    #########################################################################################
+
+      CFLAGS="$CC_ARGS   $CFLAGS"
+    CXXFLAGS="$CC_ARGS $CXXFLAGS"
+    CPPFLAGS="$PP_ARGS $CPPFLAGS"
+     LDFLAGS="$LD_ARGS  $LDFLAGS"
 
     #########################################################################################
 
@@ -690,20 +665,6 @@ inspect_install_arguments() {
     else
         CMAKE_FIND_DEBUG_MODE=OFF
     fi
-
-    #########################################################################################
-
-    [ -d "$SESSION_DIR" ] || run install -d "$SESSION_DIR"
-
-    cat > "$SESSION_DIR/toolchain.txt" <<EOF
-     CC='$CC'
-    CXX='$CXX'
-     AS='$AS'
-     LD='$LD'
-     AR='$AR'
- RANLIB='$RANLIB'
-SYSROOT='$SYSROOT'
-EOF
 }
 
 cmakew() {
@@ -764,11 +725,7 @@ install_the_given_package() {
     unset PACKAGE_INSTALL
     unset PACKAGE_DOTWEAK
 
-    if [ "$1" = 'perl-XML-Parser' ] ; then
-        package_info_perl_XML_Parser
-    else
-        package_info_$1
-    fi
+    package_info_$1
 
     #########################################################################################
 
@@ -881,6 +838,12 @@ install_the_given_package() {
 
     #########################################################################################
 
+    if [ "$DUMP_ENV" = 1 ] ; then
+        run export -p
+    fi
+
+    #########################################################################################
+
     if [ -n  "$PACKAGE_INSTALL" ] ; then
         eval "$PACKAGE_INSTALL"
     else
@@ -925,12 +888,6 @@ package_info_libbz2() {
     PACKAGE_INSTALL='cmakew -DINSTALL_EXECUTABLES=OFF -DINSTALL_LIBRARIES=ON -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF'
 }
 
-package_info_libpcre2() {
-    PACKAGE_SRC_URL='https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.42/pcre2-10.42.tar.bz2'
-    PACKAGE_SRC_SHA='8d36cd8cb6ea2a4c2bb358ff6411b0c788633a2a45dabbf1aeb4b701d1b5e840'
-    PACKAGE_INSTALL='cmakew -DCMAKE_C_STANDARD=99 -DCMAKE_C_STANDARD_REQUIRED=ON -DPCRE2_BUILD_PCRE2_8=ON -DPCRE2_BUILD_PCRE2_16=ON -DPCRE2_BUILD_PCRE2_32=ON -DPCRE2_BUILD_PCRE2GREP=OFF -DPCRE2_BUILD_TESTS=OFF -DPCRE2_DEBUG=OFF -DPCRE2_SUPPORT_VALGRIND=OFF -DPCRE2_SUPPORT_UNICODE=ON'
-}
-
 package_info_libexpat() {
     PACKAGE_SRC_URL='https://github.com/libexpat/libexpat/releases/download/R_2_5_0/expat-2.5.0.tar.xz'
     PACKAGE_SRC_SHA='ef2420f0232c087801abf705e89ae65f6257df6b7931d37846a193ef2e8cdcbe'
@@ -962,12 +919,6 @@ package_info_libffi() {
     PACKAGE_INSTALL='configure --disable-dependency-tracking --enable-static --disable-shared --disable-docs --disable-symvers'
 }
 
-package_info_libyaml() {
-    PACKAGE_SRC_URL='https://github.com/yaml/libyaml/releases/download/0.2.5/yaml-0.2.5.tar.gz'
-    PACKAGE_SRC_SHA='c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4'
-    PACKAGE_INSTALL='configure --disable-dependency-tracking --enable-static --disable-shared --enable-largefile'
-}
-
 package_info_libopenssl() {
     PACKAGE_SRC_URL='https://www.openssl.org/source/openssl-3.3.1.tar.gz'
     PACKAGE_SRC_SHA='777cd596284c883375a2a7a11bf5d2786fc5413255efab20c50d6ffe6d020b7e'
@@ -983,28 +934,6 @@ package_info_perl() {
     PACKAGE_INSTALL='run ./Configure "-Dprefix=$PACKAGE_INSTALL_DIR" -Dman1dir=none -Dman3dir=none -des -Dmake=gmake -Duselargefiles -Duseshrplib -Dusethreads -Dusenm=false -Dusedl=true && run "$GMAKE" "--jobs=$BUILD_NJOBS" && run "$GMAKE" install'
 }
 
-package_info_texinfo() {
-    PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/texinfo/texinfo-7.1.tar.xz'
-    PACKAGE_SRC_SHA='deeec9f19f159e046fdf8ad22231981806dac332cc372f1c763504ad82b30953'
-    PACKAGE_DEP_PKG='perl'
-    PACKAGE_DOPATCH='sed -i.bak "/libintl/d" tp/Texinfo/XS/parsetexi/api.c'
-    PACKAGE_INSTALL='configure --with-included-regex --enable-threads=posix --disable-nls'
-}
-
-package_info_help2man() {
-    PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/help2man/help2man-1.49.3.tar.xz'
-    PACKAGE_SRC_SHA='4d7e4fdef2eca6afe07a2682151cea78781e0a4e8f9622142d9f70c083a2fd4f'
-    PACKAGE_DEP_PKG='perl'
-    PACKAGE_INSTALL='configure'
-}
-
-package_info_intltool() {
-    PACKAGE_SRC_URL='https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz'
-    PACKAGE_SRC_SHA='67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd'
-    PACKAGE_DEP_PKG='libexpat perl perl-XML-Parser'
-    PACKAGE_INSTALL='configure'
-}
-
 package_info_autoconf() {
     PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz'
     PACKAGE_SRC_SHA='431075ad0bf529ef13cb41e9042c542381103e80015686222b8a9d4abef42a1c'
@@ -1015,38 +944,8 @@ package_info_autoconf() {
 package_info_automake() {
     PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/automake/automake-1.16.5.tar.xz'
     PACKAGE_SRC_SHA='f01d58cd6d9d77fbdca9eb4bbd5ead1988228fdb73d6f7a201f5f8d6b118b469'
-    PACKAGE_DEP_PKG='perl gm4 autoconf'
+    PACKAGE_DEP_PKG='autoconf'
     PACKAGE_INSTALL='configure'
-}
-
-package_info_perl_XML_Parser() {
-    PACKAGE_SRC_URL='https://cpan.metacpan.org/authors/id/T/TO/TODDR/XML-Parser-2.47.tar.gz'
-    PACKAGE_SRC_SHA='ad4aae643ec784f489b956abe952432871a622d4e2b5c619e8855accbfc4d1d8'
-    PACKAGE_DEP_PKG='perl libexpat'
-    PACKAGE_DOPATCH='
-run install -d "$PACKAGE_INSTALL_DIR/lib/"
-run cp -L $SESSION_DIR/3rdroot/lib/libexpat.* $PACKAGE_INSTALL_DIR/lib/
-run export EXPATLIBPATH="$PACKAGE_INSTALL_DIR/lib"
-run export EXPATINCPATH="$SESSION_DIR/3rdroot/include"
-'
-    PACKAGE_INSTALL='run perl Makefile.PL && run "$GMAKE" "--jobs=$BUILD_NJOBS" && run "$GMAKE" install'
-}
-
-package_info_libtool() {
-    PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/libtool/libtool-2.4.7.tar.xz'
-    PACKAGE_SRC_SHA='4f7f217f057ce655ff22559ad221a0fd8ef84ad1fc5fcb6990cecc333aa1635d'
-    PACKAGE_INSTALL='configure --enable-ltdl-install'
-    PACKAGE_DOTWEAK='
-run ln -s libtool    bin/glibtool
-run ln -s libtoolize bin/glibtoolize
-'
-}
-
-package_info_ruby() {
-    PACKAGE_SRC_URL='https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.5.tar.gz'
-    PACKAGE_SRC_SHA='3781a3504222c2f26cb4b9eb9c1a12dbf4944d366ce24a9ff8cf99ecbce75196'
-    PACKAGE_DEP_PKG='libz libyaml libffi libopenssl'
-    PACKAGE_INSTALL='configure --disable-dependency-tracking'
 }
 
 package_info_python3() {
@@ -1076,31 +975,11 @@ export GDBM_LIBS="-L$PACKAGE_INSTALL_ROOT/libgdbm/lib -lgdbm -lgdbm_compat"
 export LIBS=-lm'
 }
 
-package_info_swig() {
-    PACKAGE_SRC_URL='https://downloads.sourceforge.net/project/swig/swig/swig-4.1.1/swig-4.1.1.tar.gz'
-    PACKAGE_SRC_SHA='2af08aced8fcd65cdb5cc62426768914bedc735b1c250325203716f78e39ac9b'
-    PACKAGE_DEP_PKG='libpcre2'
-    PACKAGE_INSTALL='configure --enable-ccache --enable-cpp11-testing --with-popen --with-pcre --without-boost --without-android --without-java --without-javascript --without-python --without-perl5 --without-ruby --without-php --without-tcl --without-guile --without-octave --without-scilab --without-ocaml --without-mzscheme --without-csharp --without-lua --without-r --without-d --without-go'
-}
-
-
-package_info_gm4() {
-    PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz'
-    PACKAGE_SRC_SHA='63aede5c6d33b6d9b13511cd0be2cac046f2e70fd0a07aa9573a04a82783af96'
-    PACKAGE_INSTALL='configure'
-}
-
 package_info_gmake() {
     PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz'
     PACKAGE_SRC_SHA='dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3'
     PACKAGE_INSTALL='configure --program-prefix=g --without-guile --without-dmalloc'
     PACKAGE_DOTWEAK='run ln -s gmake bin/make'
-}
-
-package_info_patch() {
-    PACKAGE_SRC_URL='https://ftp.gnu.org/gnu/patch/patch-2.7.6.tar.xz'
-    PACKAGE_SRC_SHA='ac610bda97abe0d9f6b7c963255a11dcb196c25e337c61f94e4778d632f1d8fd'
-    PACKAGE_INSTALL='configure --disable-dependency-tracking --disable-gcc-warnings'
 }
 
 package_info_pkgconf() {
@@ -1156,17 +1035,11 @@ ${COLOR_GREEN}xbuilder install <PACKAGE-NAME>... [OPTIONS]${COLOR_OFF}
         ${COLOR_BLUE}-j <N>${COLOR_OFF}
             specify the number of jobs you can run in parallel.
 
-        ${COLOR_BLUE}--flat${COLOR_OFF}
-            install packages into --prefix=<DIR> rather than --prefix=<DIR>/<PACKAGE-NAME>
-
-        ${COLOR_BLUE}-E${COLOR_OFF}
-            export compile_commands.json
-
-        ${COLOR_BLUE}-U${COLOR_OFF}
-            upgrade packages if possible.
-
         ${COLOR_BLUE}-K${COLOR_OFF}
             keep the session directory even if this packages are successfully installed.
+
+        ${COLOR_BLUE}-x${COLOR_OFF}
+            debug current running shell.
 
         ${COLOR_BLUE}-q${COLOR_OFF}
             silent mode. no any messages will be output to terminal.
@@ -1176,7 +1049,7 @@ ${COLOR_GREEN}xbuilder install <PACKAGE-NAME>... [OPTIONS]${COLOR_OFF}
 
             This option is equivalent to -v-* options all are supplied.
 
-        ${COLOR_BLUE}-x${COLOR_OFF}
+        ${COLOR_BLUE}-vv${COLOR_OFF}
             very verbose mode. many many messages will be output to terminal.
 
             This option is equivalent to -v-* and -x-* options all are supplied.
@@ -1187,23 +1060,17 @@ ${COLOR_GREEN}xbuilder install <PACKAGE-NAME>... [OPTIONS]${COLOR_OFF}
         ${COLOR_BLUE}-v-http${COLOR_OFF}
             show http request/response.
 
-        ${COLOR_BLUE}-v-uppm${COLOR_OFF}
-            pass -v argument to uppm command.
-
         ${COLOR_BLUE}-v-gmake${COLOR_OFF}
             pass V=1 argument to gmake command.
 
         ${COLOR_BLUE}-v-cmake${COLOR_OFF}
             pass -DCMAKE_VERBOSE_MAKEFILE=ON argument to cmake command.
 
-        ${COLOR_BLUE}-x-sh${COLOR_OFF}
-            set -x to debug current running shell.
+        ${COLOR_BLUE}-v-cc${COLOR_OFF}
+            pass -v argument to the C/C++ compiler.
 
-        ${COLOR_BLUE}-x-cc${COLOR_OFF}
-            pass -v argument to clang command.
-
-        ${COLOR_BLUE}-x-ld${COLOR_OFF}
-            pass -Wl,-v argument to linker.
+        ${COLOR_BLUE}-v-ld${COLOR_OFF}
+            pass -v argument to the linker.
 
         ${COLOR_BLUE}-x-gmake${COLOR_OFF}
             pass --debug argument to gmake command.
@@ -1213,9 +1080,6 @@ ${COLOR_GREEN}xbuilder install <PACKAGE-NAME>... [OPTIONS]${COLOR_OFF}
 
         ${COLOR_BLUE}-x-pkg-config${COLOR_OFF}
             export PKG_CONFIG_DEBUG_SPEW=1
-
-${COLOR_GREEN}xbuilder exec [--prefix=<DIR>] <CMD>${COLOR_OFF}
-    execute command in environment.
 "
 }
 
@@ -1229,7 +1093,7 @@ case $1 in
         printf '%s\n' "$XBUILDER_VERSION"
         ;;
     ls-available)
-        PACKAGE_NAMES='libz libbz2 liblzma libpcre2 libsqlite3 libopenssl libexpat libgdbm libffi libyaml ruby perl python3 texinfo help2man intltool libtool autoconf automake swig perl-XML-Parser pkgconf patch gmake gm4'
+        PACKAGE_NAMES='libz libbz2 liblzma libsqlite3 libopenssl libexpat libgdbm libffi perl python3 libtool autoconf automake pkgconf gmake gm4'
 
         if [ "$2" = -v ] ; then
             for PACKAGE_NAME in $PACKAGE_NAMES
@@ -1242,11 +1106,7 @@ case $1 in
                 unset PACKAGE_INSTALL
                 unset PACKAGE_DOTWEAK
 
-                if [ "$PACKAGE_NAME" = 'perl-XML-Parser' ] ; then
-                    package_info_perl_XML_Parser
-                else
-                    package_info_$PACKAGE_NAME
-                fi
+                package_info_$PACKAGE_NAME
 
                 cat <<EOF
 $PACKAGE_NAME:
@@ -1260,10 +1120,6 @@ EOF
         fi
         ;;
     install)
-        if [ -z "$GMAKE" ] ; then
-            GMAKE="$(command -v gmake || command -v make)" || abort 1 "command not found: gmake"
-        fi
-
         shift
 
         inspect_install_arguments "$@"
@@ -1272,62 +1128,24 @@ EOF
         do
             install_the_given_package "$PACKAGE_NAME"
         done
-        ;;
-    exec)
-        shift
 
-        case $1 in
-            '') abort 1 'xbuilder exec <CMD> , <CMD> is unspecified.'
-                ;;
-            --prefix=*)
-                PACKAGE_INSTALL_ROOT="${1#*=}"
+        cat > "$PACKAGE_INSTALL_DIR/toolchain.txt" <<EOF
+     CC='$CC'
+    CXX='$CXX'
+     AS='$AS'
+     LD='$LD'
+     AR='$AR'
+ RANLIB='$RANLIB'
+SYSROOT='$SYSROOT'
+PROFILE='$PROFILE'
+ CFLAGS='$CFLAGS'
+LDFLAGS='$LDFLAGS'
+EOF
 
-                case $PACKAGE_INSTALL_ROOT in
-                    '') abort 1 "directory $PACKAGE_INSTALL_ROOT does not exist."
-                        ;;
-                    /*) ;;
-                    *)  PACKAGE_INSTALL_ROOT="$PWD/$PACKAGE_INSTALL_ROOT"
-                esac
-
-                shift
-
-                [ -z "$1" ] && abort 1 'xbuilder exec --prefix=<DIR> <CMD> , <CMD> is unspecified.'
-                ;;
-        esac
-
-        if [ -z "$PACKAGE_INSTALL_ROOT" ] ; then
-            [ -z "$HOME" ] && abort 1 'HOME environment is not set.'
-
-            PACKAGE_INSTALL_ROOT="$HOME/.xbuilder/installed"
+        if [ "$REQUEST_TO_KEEP_SESSION_DIR" != 1 ] ; then
+            rm -rf "$SESSION_DIR"
         fi
 
-        if [ -d  "$PACKAGE_INSTALL_ROOT/include" ] ; then
-            CPPFLAGS="-I$PACKAGE_INSTALL_ROOT/include $CPPFLAGS"
-        fi
-
-        if [ -d  "$PACKAGE_INSTALL_ROOT/lib" ] ; then
-            LDFLAGS="-L$PACKAGE_INSTALL_ROOT/lib -Wl,-rpath,$PACKAGE_INSTALL_ROOT/lib $LDFLAGS"
-        fi
-
-        if [ -d  "$PACKAGE_INSTALL_ROOT/bin" ] ; then
-            PATH="$PACKAGE_INSTALL_ROOT/bin:$PATH"
-        fi
-
-        if [ -d  "$PACKAGE_INSTALL_ROOT/sbin" ] ; then
-            PATH="$PACKAGE_INSTALL_ROOT/sbin:$PATH"
-        fi
-
-        if [ -d          "$PACKAGE_INSTALL_ROOT/share/aclocal" ] ; then
-            ACLOCAL_PATH="$PACKAGE_INSTALL_ROOT/share/aclocal:$ACLOCAL_PATH"
-        fi
-
-        export CPPFLAGS
-        export LDFLAGS
-        export PATH
-        export ACLOCAL_PATH
-
-        pwd
-        exec "$@"
         ;;
     *)  abort 1 "unrecognized argument: $1"
 esac
