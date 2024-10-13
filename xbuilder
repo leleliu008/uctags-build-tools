@@ -747,8 +747,10 @@ install_the_given_package() {
 
     #########################################################################################
 
+    AUX_INSTALL_DIR="$SESSION_DIR/auxroot"
+
     if [ "$PACKAGE_TYPE" = 1 ] ; then
-        PACKAGE_INSTALL_DIR="$SESSION_DIR/3rdroot"
+        PACKAGE_INSTALL_DIR="$AUX_INSTALL_DIR"
     else
         PACKAGE_INSTALL_DIR="$PACKAGE_INSTALL_ROOT"
     fi
@@ -762,52 +764,6 @@ install_the_given_package() {
 
     #########################################################################################
 
-    PACKAGE_WORKING_DIR="$SESSION_DIR/$1"
-
-    #########################################################################################
-
-    # override the default search directory (usually /usr/lib/pkgconfig:/usr/share/pkgconfig)
-    # because we only want to use our own
-    export PKG_CONFIG_LIBDIR="$PACKAGE_WORKING_DIR/lib/pkgconfig"
-    export PKG_CONFIG_PATH="$PACKAGE_WORKING_DIR/lib/pkgconfig"
-    export ACLOCAL_PATH="$PACKAGE_WORKING_DIR/share/aclocal"
-    export CPPFLAGS="-I$PACKAGE_WORKING_DIR/include $CPPFLAGS"
-    export LDFLAGS="-L$PACKAGE_WORKING_DIR/lib -Wl,-rpath,$PACKAGE_INSTALL_DIR/lib $LDFLAGS"
-
-    for DEPENDENT_PACKAGE_INSTALLED_DIR in "$SESSION_DIR/3rdroot" "$PACKAGE_INSTALL_ROOT"
-    do
-        if [ -d  "$DEPENDENT_PACKAGE_INSTALLED_DIR/include" ] ; then
-            CPPFLAGS="-I$DEPENDENT_PACKAGE_INSTALLED_DIR/include $CPPFLAGS"
-        fi
-
-        if [ -d  "$DEPENDENT_PACKAGE_INSTALLED_DIR/lib" ] ; then
-            LDFLAGS="-L$DEPENDENT_PACKAGE_INSTALLED_DIR/lib -Wl,-rpath,$DEPENDENT_PACKAGE_INSTALLED_DIR/lib $LDFLAGS"
-        fi
-
-        if [ -d  "$DEPENDENT_PACKAGE_INSTALLED_DIR/bin" ] ; then
-            PATH="$DEPENDENT_PACKAGE_INSTALLED_DIR/bin:$PATH"
-        fi
-
-        if [ -d  "$DEPENDENT_PACKAGE_INSTALLED_DIR/sbin" ] ; then
-            PATH="$DEPENDENT_PACKAGE_INSTALLED_DIR/sbin:$PATH"
-        fi
-
-        if [ -d          "$DEPENDENT_PACKAGE_INSTALLED_DIR/share/aclocal" ] ; then
-            ACLOCAL_PATH="$DEPENDENT_PACKAGE_INSTALLED_DIR/share/aclocal:$ACLOCAL_PATH"
-        fi
-
-        for d in lib share
-        do
-            DEPENDENT_PACKAGE_PKGCONF_DIR="$DEPENDENT_PACKAGE_INSTALLED_DIR/$d/pkgconfig"
-
-            if [ -d "$DEPENDENT_PACKAGE_PKGCONF_DIR" ] ; then
-                PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$DEPENDENT_PACKAGE_PKGCONF_DIR"
-            fi
-        done
-    done
-
-    #########################################################################################
-
     PACKAGE_SRC_FILETYPE="$(filetype_from_url "$PACKAGE_SRC_URL")"
     PACKAGE_SRC_FILENAME="$PACKAGE_SRC_SHA$PACKAGE_SRC_FILETYPE"
     PACKAGE_SRC_FILEPATH="$DOWNLOAD_DIR/$PACKAGE_SRC_FILENAME"
@@ -815,6 +771,10 @@ install_the_given_package() {
     #########################################################################################
 
     wfetch "$PACKAGE_SRC_URL" --uri="$PACKAGE_SRC_URI" --sha256="$PACKAGE_SRC_SHA" -o "$PACKAGE_SRC_FILEPATH"
+
+    #########################################################################################
+
+    PACKAGE_WORKING_DIR="$SESSION_DIR/$1"
 
     #########################################################################################
 
@@ -828,6 +788,25 @@ install_the_given_package() {
     fi
 
     run "$TAR" xf "$PACKAGE_SRC_FILEPATH" --strip-components=1 --no-same-owner
+
+    #########################################################################################
+
+    if [ -n "$PACKAGE_DEP_PKG" ] ; then
+        AUX_INCLUDE_DIR="$AUX_INSTALL_DIR/include"
+        AUX_LIBRARY_DIR="$AUX_INSTALL_DIR/lib"
+
+        STATIC_LIBRARY_DIR="$PACKAGE_WORKING_DIR/lib"
+
+        run install -d ../lib/
+
+        find "$AUX_LIBRARY_DIR" -maxdepth 1 -mindepth 1 -name 'lib*.a' -exec ln -s -v '{}' ../lib/ +
+
+        CPPFLAGS="-I$AUX_INCLUDE_DIR $CPPFLAGS"
+
+        LDFLAGS="-L$STATIC_LIBRARY_DIR $LDFLAGS"
+
+        PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$AUX_LIBRARY_DIR/pkgconfig"
+    fi
 
     #########################################################################################
 
@@ -951,25 +930,25 @@ package_info_python3() {
     PACKAGE_SRC_URL='https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz'
     PACKAGE_SRC_SHA='e7de3240a8bc2b1e1ba5c81bf943f06861ff494b69fda990ce2722a504c6153d'
     PACKAGE_DEP_PKG='libz libbz2 liblzma libgdbm libexpat libsqlite3 libffi libopenssl perl'
-    PACKAGE_INSTALL='configure --with-system-expat --with-system-ffi --with-openssl=$SESSION_DIR/3rdroot --with-ensurepip=yes --with-lto --enable-ipv6 --enable-shared --enable-largefile --disable-option-checking --disable-nls --disable-debug --enable-loadable-sqlite-extensions --disable-profiling'
+    PACKAGE_INSTALL='configure --with-system-expat --with-system-ffi --with-openssl=$AUX_INSTALL_DIR --with-ensurepip=yes --with-lto --enable-ipv6 --enable-shared --enable-largefile --disable-option-checking --disable-nls --disable-debug --enable-loadable-sqlite-extensions --disable-profiling'
     PACKAGE_DOPATCH='
 unset PYTHONHOME
 unset PYTHONPATH
 
-export ZLIB_CFLAGS="-I$PACKAGE_INSTALL_ROOT/libz/include"
-export ZLIB_LIBS="-L$PACKAGE_INSTALL_ROOT/libz/lib -lz"
+export ZLIB_CFLAGS="-I$AUX_INCLUDE_DIR"
+export ZLIB_LIBS="-L$STATIC_LIBRARY_DIR -lz"
 
-export BZIP2_CFLAGS="-I$PACKAGE_INSTALL_ROOT/libbz2/include"
-export BZIP2_LIBS="-L$PACKAGE_INSTALL_ROOT/libbz2/lib -lbz2"
+export BZIP2_CFLAGS="-I$AUX_INCLUDE_DIR"
+export BZIP2_LIBS="-L$STATIC_LIBRARY_DIR -lbz2"
 
-export LIBLZMA_CFLAGS="-I$PACKAGE_INSTALL_ROOT/liblzma/include"
-export LIBLZMA_LIBS="-L$PACKAGE_INSTALL_ROOT/liblzma/lib -llzma"
+export LIBLZMA_CFLAGS="-I$AUX_INCLUDE_DIR"
+export LIBLZMA_LIBS="-L$STATIC_LIBRARY_DIR -llzma"
 
-export LIBSQLITE3_CFLAGS="-I$PACKAGE_INSTALL_ROOT/libsqlite3/include"
-export LIBSQLITE3_LIBS="-L$PACKAGE_INSTALL_ROOT/libsqlite3/lib -lsqlite3"
+export LIBSQLITE3_CFLAGS="-I$AUX_INCLUDE_DIR"
+export LIBSQLITE3_LIBS="-L$STATIC_LIBRARY_DIR -lsqlite3"
 
-export GDBM_CFLAGS="-I$PACKAGE_INSTALL_ROOT/libgdbm/include"
-export GDBM_LIBS="-L$PACKAGE_INSTALL_ROOT/libgdbm/lib -lgdbm -lgdbm_compat"
+export GDBM_CFLAGS="-I$AUX_INCLUDE_DIR"
+export GDBM_LIBS="-L$STATIC_LIBRARY_DIR -lgdbm -lgdbm_compat"
 
 export LIBS=-lm'
 }
