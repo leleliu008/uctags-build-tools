@@ -1134,7 +1134,7 @@ EOF
             (install_the_given_package "$PACKAGE_NAME")
         done
 
-        cat > "$PACKAGE_INSTALL_DIR/toolchain.txt" <<EOF
+        cat > "$PACKAGE_INSTALL_ROOT/toolchain.txt" <<EOF
      CC='$CC'
     CXX='$CXX'
      AS='$AS'
