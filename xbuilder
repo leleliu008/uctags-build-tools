@@ -536,7 +536,7 @@ inspect_install_arguments() {
 
     LD_ARGS="$LD_ARGS -L$AUX_LIBRARY_DIR"
 
-    PATH="$AUX_INSTALL_DIR/bin:$PATH"
+    PATH="$AUX_INSTALL_DIR/bin:$PACKAGE_INSTALL_DIR/bin:$PATH"
 
     #########################################################################################
 
