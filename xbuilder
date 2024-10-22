@@ -1172,7 +1172,10 @@ EOF
 
         inspect_install_arguments "$@"
 
-        install_the_given_package python3
+        for PACKAGE_NAME in $SPECIFIED_PACKAGE_LIST
+        do
+            install_the_given_package "$PACKAGE_NAME"
+        done
 
         if [ "$REQUEST_TO_KEEP_SESSION_DIR" != 1 ] ; then
             rm -rf "$SESSION_DIR"
