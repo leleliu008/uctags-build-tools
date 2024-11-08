@@ -50,13 +50,13 @@ success() {
 }
 
 error() {
-    printf '%b\n' "${COLOR_RED}💔  xbuilder: $*${COLOR_OFF}" >&2
+    printf '%b\n' "${COLOR_RED}💔  $ARG0: $*${COLOR_OFF}" >&2
 }
 
 abort() {
     EXIT_STATUS_CODE="$1"
     shift
-    printf '%b\n' "${COLOR_RED}💔  xbuilder: $*${COLOR_OFF}" >&2
+    printf '%b\n' "${COLOR_RED}💔  $ARG0: $*${COLOR_OFF}" >&2
     exit "$EXIT_STATUS_CODE"
 }
 
@@ -401,7 +401,7 @@ inspect_install_arguments() {
 
     : ${SESSION_DIR:="$HOME/.xbuilder/run/$$"}
     : ${DOWNLOAD_DIR:="$HOME/.xbuilder/downloads"}
-    : ${PACKAGE_INSTALL_DIR:="$HOME/.xbuilder/installed"}
+    : ${PACKAGE_INSTALL_DIR:="$HOME/.xbuilder/installed/uctags-build-tools"}
 
     #########################################################################################
 
@@ -622,7 +622,7 @@ install_the_given_package() {
 
     #########################################################################################
 
-    printf '\n%b\n' "${COLOR_PURPLE}=>> xbuilder: install package : $1${COLOR_OFF}"
+    printf '\n%b\n' "${COLOR_PURPLE}=>> $ARG0: install package : $1${COLOR_OFF}"
 
     #########################################################################################
 
@@ -705,7 +705,6 @@ src-sha: $PACKAGE_SRC_SHA
 dep-pkg: $PACKAGE_DEP_PKG
 install: $PACKAGE_INSTALL
 builtat: $PACKAGE_INSTALL_UTS
-builtby: xbuilder-$XBUILDER_VERSION
 EOF
 
     cat > toolchain.txt <<EOF
@@ -1070,20 +1069,16 @@ package_info_diffutils() {
 
 help() {
     printf '%b\n' "\
-${COLOR_GREEN}A package builder to build python3${COLOR_OFF}
+${COLOR_GREEN}uctags build tools builder${COLOR_OFF}
 
-${COLOR_GREEN}xbuilder --help${COLOR_OFF}
-${COLOR_GREEN}xbuilder -h${COLOR_OFF}
+${COLOR_GREEN}$ARG0 --help${COLOR_OFF}
+${COLOR_GREEN}$ARG0 -h${COLOR_OFF}
     show help of this command.
 
-${COLOR_GREEN}xbuilder --version${COLOR_OFF}
-${COLOR_GREEN}xbuilder -V${COLOR_OFF}
-    show version of this command.
-
-${COLOR_GREEN}xbuilder ls-available [-v]${COLOR_OFF}
+${COLOR_GREEN}$ARG0 ls-available [-v]${COLOR_OFF}
     install the available packages.
 
-${COLOR_GREEN}xbuilder install [OPTIONS]${COLOR_OFF}
+${COLOR_GREEN}$ARG0 install [OPTIONS]${COLOR_OFF}
     Influential environment variables: TAR, GMAKE, CC, CXX, AS, LD, AR, RANLIB, CFLAGS, CXXFLAGS, CPPFLAGS, LDFLAGS
 
     OPTIONS:
@@ -1095,6 +1090,19 @@ ${COLOR_GREEN}xbuilder install [OPTIONS]${COLOR_OFF}
 
         ${COLOR_BLUE}--download-dir=<DIR>${COLOR_OFF}
             specify the download directory.
+
+        ${COLOR_BLUE}--profile=<debug|release>${COLOR_OFF}
+            specify the build profile.
+
+            debug:
+                  CFLAGS: -O0 -g
+                CXXFLAGS: -O0 -g
+
+            release:
+                  CFLAGS: -Os
+                CXXFLAGS: -Os
+                CPPFLAGS: -DNDEBUG
+                 LDFLAGS: -flto -Wl,-s
 
         ${COLOR_BLUE}-j <N>${COLOR_OFF}
             specify the number of jobs you can run in parallel.
@@ -1138,14 +1146,11 @@ ${COLOR_GREEN}xbuilder install [OPTIONS]${COLOR_OFF}
 "
 }
 
-XBUILDER_VERSION=3.0.0
+ARG0="$0"
 
 case $1 in
     ''|--help|-h)
         help
-        ;;
-    --version|-V)
-        printf '%s\n' "$XBUILDER_VERSION"
         ;;
     ls-available)
         PACKAGE_NAMES='findutils diffutils gmake gm4 perl automake autoconf pkgconf libz libbz2 liblzma libsqlite3 libopenssl libxcrypt libexpat libgdbm libuuid libedit libncurses libnsl libffi python3'
